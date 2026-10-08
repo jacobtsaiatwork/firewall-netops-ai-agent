@@ -1,0 +1,710 @@
+﻿<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Firewall NetOps AI - 萬用防火牆排錯助理</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-main: #0f172a;
+            --bg-card: #1e293b;
+            --bg-card-sub: #334155;
+            --primary: #38bdf8;
+            --primary-hover: #0ea5e9;
+            --accent: #f43f5e;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --border: #334155;
+            --code-bg: #090d16;
+            --success: #10b981;
+            --warning: #f59e0b;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-main);
+            color: var(--text-main);
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Sidebar - Connection Config */
+        .sidebar {
+            width: 380px;
+            background-color: var(--bg-card);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            padding: 24px;
+            gap: 16px;
+            overflow-y: auto;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 8px;
+        }
+
+        .brand-icon {
+            font-size: 28px;
+            background: linear-gradient(135deg, #38bdf8, #818cf8);
+            border-radius: 10px;
+            padding: 6px;
+            display: inline-flex;
+        }
+
+        .brand-title {
+            font-size: 1.15rem;
+            font-weight: 700;
+            color: var(--text-main);
+            line-height: 1.2;
+        }
+
+        .brand-subtitle {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        label {
+            font-size: 0.82rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        input, select {
+            background-color: var(--bg-main);
+            border: 1px solid var(--border);
+            color: var(--text-main);
+            padding: 10px 14px;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            outline: none;
+            transition: border-color 0.2s;
+            font-family: inherit;
+        }
+
+        input:focus, select:focus {
+            border-color: var(--primary);
+        }
+
+        .btn {
+            background-color: var(--primary);
+            color: #04101e;
+            font-weight: 600;
+            padding: 12px 18px;
+            border-radius: 8px;
+            border: none;
+            cursor: pointer;
+            font-size: 0.95rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            transition: all 0.2s;
+        }
+
+        .btn:hover {
+            background-color: var(--primary-hover);
+            transform: translateY(-1px);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-test {
+            background-color: var(--bg-card-sub);
+            color: var(--text-main);
+            font-size: 0.85rem;
+            padding: 8px 12px;
+        }
+
+        .btn-test:hover {
+            background-color: #475569;
+        }
+
+        .status-badge {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.85rem;
+            padding: 8px 12px;
+            border-radius: 6px;
+            background-color: var(--bg-main);
+            border: 1px solid var(--border);
+            color: var(--text-muted);
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: #64748b;
+        }
+
+        .status-dot.connected { background-color: var(--success); }
+        .status-dot.error { background-color: var(--accent); }
+
+        /* Main Chat / Investigation Canvas */
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background-color: var(--bg-main);
+            overflow: hidden;
+        }
+
+        .chat-header {
+            padding: 16px 28px;
+            border-bottom: 1px solid var(--border);
+            background-color: rgba(30, 41, 59, 0.4);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .chat-container {
+            flex: 1;
+            padding: 24px 28px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .message {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            max-width: 88%;
+        }
+
+        .message.user {
+            align-self: flex-end;
+        }
+
+        .message.user .bubble {
+            background-color: #0284c7;
+            color: #fff;
+            border-radius: 14px 14px 2px 14px;
+            padding: 12px 18px;
+            font-size: 0.95rem;
+            line-height: 1.5;
+        }
+
+        .message.assistant {
+            align-self: flex-start;
+            width: 100%;
+            max-width: 95%;
+        }
+
+        .investigation-card {
+            background-color: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 18px 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+        }
+
+        .step-timeline {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            padding-left: 10px;
+            border-left: 2px solid var(--border);
+            margin-left: 6px;
+        }
+
+        .step-item {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            background-color: var(--bg-main);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 10px 14px;
+            font-size: 0.88rem;
+        }
+
+        .step-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            color: var(--primary);
+            font-weight: 600;
+        }
+
+        .step-command {
+            font-family: 'JetBrains Mono', monospace;
+            background-color: var(--code-bg);
+            padding: 4px 8px;
+            border-radius: 4px;
+            color: #38bdf8;
+            font-size: 0.82rem;
+            word-break: break-all;
+        }
+
+        .step-preview {
+            font-family: 'JetBrains Mono', monospace;
+            background-color: var(--code-bg);
+            padding: 8px;
+            border-radius: 4px;
+            font-size: 0.78rem;
+            color: #cbd5e1;
+            max-height: 140px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+
+        .report-box {
+            background: linear-gradient(180deg, #1e293b 0%, #151e2e 100%);
+            border: 1px solid #38bdf844;
+            border-radius: 10px;
+            padding: 18px 20px;
+            line-height: 1.65;
+            font-size: 0.94rem;
+        }
+
+        .report-box h3 {
+            color: var(--primary);
+            margin-bottom: 8px;
+            font-size: 1.1rem;
+        }
+
+        .report-box pre {
+            background-color: var(--code-bg);
+            padding: 12px;
+            border-radius: 6px;
+            overflow-x: auto;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            margin: 10px 0;
+        }
+
+        /* Input Bar */
+        .input-bar-container {
+            padding: 18px 28px;
+            background-color: var(--bg-card);
+            border-top: 1px solid var(--border);
+        }
+
+        .input-bar {
+            display: flex;
+            gap: 12px;
+            background-color: var(--bg-main);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 6px 12px;
+            align-items: center;
+        }
+
+        .input-bar:focus-within {
+            border-color: var(--primary);
+        }
+
+        .input-bar textarea {
+            flex: 1;
+            background: transparent;
+            border: none;
+            color: var(--text-main);
+            font-size: 0.95rem;
+            resize: none;
+            outline: none;
+            font-family: inherit;
+            padding: 6px 0;
+            max-height: 100px;
+        }
+
+        .quick-tags {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+        }
+
+        .tag-btn {
+            background-color: var(--bg-card-sub);
+            color: #cbd5e1;
+            border: 1px solid transparent;
+            font-size: 0.78rem;
+            padding: 4px 10px;
+            border-radius: 14px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .tag-btn:hover {
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+
+        /* Spinner */
+        .spinner {
+            border: 2px solid rgba(255,255,255,0.2);
+            border-top: 2px solid var(--primary);
+            border-radius: 50%;
+            width: 16px;
+            height: 16px;
+            animation: spin 0.8s linear infinite;
+            display: inline-block;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Sidebar: Connection Settings -->
+    <div class="sidebar">
+        <div class="brand">
+            <div class="brand-icon">🛡️</div>
+            <div>
+                <div class="brand-title">Firewall NetOps AI</div>
+                <div class="brand-subtitle">萬用防火牆除錯智能助理</div>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label>Gemini API Key</label>
+            <input type="password" id="apiKey" placeholder="AIzaSy...">
+        </div>
+
+        <div class="form-group">
+            <label>防火牆廠牌</label>
+            <select id="deviceType">
+                <option value="paloalto_panos">Palo Alto Networks (PAN-OS)</option>
+                <option value="fortinet">Fortinet (FortiOS)</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label>防火牆 IP 位址</label>
+            <input type="text" id="host" placeholder="例如: 192.168.1.254">
+        </div>
+
+        <div style="display: flex; gap: 10px;">
+            <div class="form-group" style="flex: 2;">
+                <label>帳號 (Username)</label>
+                <input type="text" id="username" placeholder="admin">
+            </div>
+            <div class="form-group" style="flex: 1;">
+                <label>Port</label>
+                <input type="number" id="port" value="22">
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label>密碼 (Password)</label>
+            <input type="password" id="password" placeholder="••••••••">
+        </div>
+
+        <button class="btn btn-test" id="btnTestConn" onclick="testConnection()">
+            🔌 測試設備 SSH 連線
+        </button>
+
+        <div class="status-badge" id="statusBadge">
+            <div class="status-dot" id="statusDot"></div>
+            <span id="statusText">尚未連線</span>
+        </div>
+
+        <div style="font-size: 0.76rem; color: #64748b; line-height: 1.4; margin-top: auto;">
+            🛡️ <b>唯讀安全防護機制已啟用</b>：系統白名單僅允許執行 show / get / diagnose / test 等狀態查詢，全面攔截 set / config / delete 等修改指令。
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        <div class="chat-header">
+            <div>
+                <b style="font-size: 1rem;">智慧排錯對話畫布</b>
+                <span style="font-size: 0.8rem; color: var(--text-muted); margin-left: 10px;">由 ReAct AI Agent 自動推論並執行診斷指令</span>
+            </div>
+            <button class="btn btn-test" onclick="clearChat()">🗑️ 清空歷史</button>
+        </div>
+
+        <div class="chat-container" id="chatContainer">
+            <div class="message assistant">
+                <div class="investigation-card">
+                    <p style="color: var(--text-muted); font-size: 0.9rem;">
+                        👋 您好！我是您的專屬防火牆 NetOps 助理。輸入左側連線資訊後，您可以隨意以自然語言向我詢問任何問題，例如：
+                    </p>
+                    <ul style="color: #cbd5e1; font-size: 0.85rem; padding-left: 20px; line-height: 1.7;">
+                        <li>「為什麼 <b>ethernet1/1</b> (或 <b>port1</b>) 在 14:00 會 down？」</li>
+                        <li>「為什麼 <b>192.168.1.1</b> 連不到 <b>192.168.2.2</b>？有命中哪條 Policy 嗎？」</li>
+                        <li>「檢查目前防火牆的 <b>CPU 與記憶體負載</b>，有哪些異常 Session？」</li>
+                        <li>「幫我確認到 <b>8.8.8.8</b> 的路由走哪個介面與 Next-hop？」</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- Input Bar -->
+        <div class="input-bar-container">
+            <div class="quick-tags">
+                <span style="font-size: 0.78rem; color: var(--text-muted); align-self: center;">快捷範例：</span>
+                <button class="tag-btn" onclick="fillPrompt('為什麼介面在 14:00 會 down？請檢查實體層、光衰與系統事件日誌。')">🔌 介面為何 Down？</button>
+                <button class="tag-btn" onclick="fillPrompt('為什麼 192.168.1.1 連不到 192.168.2.2？請檢查安全規則、Traffic Log 與路由。')">🚫 連線被阻擋排查</button>
+                <button class="tag-btn" onclick="fillPrompt('檢查當前防火牆系統健康狀態、CPU 使用率與前五大 Session。')">📊 系統負載與 Session</button>
+                <button class="tag-btn" onclick="fillPrompt('檢查 IPsec VPN 穿透狀態與 SA 協商日誌。')">🔒 VPN 狀態排查</button>
+            </div>
+
+            <div class="input-bar">
+                <textarea id="promptInput" rows="2" placeholder="請以自然語言描述您的排錯需求... (Enter 送出, Shift+Enter 換行)" onkeydown="handleKeyDown(event)"></textarea>
+                <button class="btn" id="btnSend" onclick="startInvestigation()">
+                    <span>🚀 開始排查</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function fillPrompt(text) {
+            document.getElementById('promptInput').value = text;
+            document.getElementById('promptInput').focus();
+        }
+
+        function handleKeyDown(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                startInvestigation();
+            }
+        }
+
+        function clearChat() {
+            document.getElementById('chatContainer').innerHTML = '';
+        }
+
+        async function testConnection() {
+            const host = document.getElementById('host').value.trim();
+            const username = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value.trim();
+            const port = parseInt(document.getElementById('port').value.trim()) || 22;
+            const deviceType = document.getElementById('deviceType').value;
+
+            if (!host || !username) {
+                alert('請填寫防火牆 IP 與管理員帳號！');
+                return;
+            }
+
+            const badge = document.getElementById('statusBadge');
+            const dot = document.getElementById('statusDot');
+            const text = document.getElementById('statusText');
+            const btn = document.getElementById('btnTestConn');
+
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span> 測試中...';
+
+            try {
+                const res = await fetch('/api/test-connection', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ device_type: deviceType, host, username, password, port })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    dot.className = 'status-dot connected';
+                    text.innerText = `連線成功 (${data.message})`;
+                    text.style.color = '#34d399';
+                } else {
+                    dot.className = 'status-dot error';
+                    text.innerText = `連線失敗: ${data.message}`;
+                    text.style.color = '#f87171';
+                }
+            } catch (err) {
+                dot.className = 'status-dot error';
+                text.innerText = `連線請求異常: ${err.message}`;
+                text.style.color = '#f87171';
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '🔌 測試設備 SSH 連線';
+            }
+        }
+
+        async function startInvestigation() {
+            const prompt = document.getElementById('promptInput').value.trim();
+            if (!prompt) return;
+
+            const apiKey = document.getElementById('apiKey').value.trim();
+            const host = document.getElementById('host').value.trim();
+            const username = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value.trim();
+            const port = parseInt(document.getElementById('port').value.trim()) || 22;
+            const deviceType = document.getElementById('deviceType').value;
+
+            if (!apiKey) {
+                alert('請先輸入 Gemini API Key！');
+                return;
+            }
+            if (!host || !username) {
+                alert('請輸入防火牆 IP 與帳號！');
+                return;
+            }
+
+            // 清空輸入框
+            document.getElementById('promptInput').value = '';
+
+            const chat = document.getElementById('chatContainer');
+
+            // 1. 顯示使用者氣泡
+            const userMsg = document.createElement('div');
+            userMsg.className = 'message user';
+            userMsg.innerHTML = `<div class="bubble">${escapeHtml(prompt)}</div>`;
+            chat.appendChild(userMsg);
+
+            // 2. 建立 AI 調查卡片
+            const assistantMsg = document.createElement('div');
+            assistantMsg.className = 'message assistant';
+            
+            const cardId = 'card-' + Date.now();
+            assistantMsg.innerHTML = `
+                <div class="investigation-card" id="${cardId}">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <b>🛡️ AI NetOps 自主除錯分析進行中...</b>
+                        <span class="spinner" id="${cardId}-spinner"></span>
+                    </div>
+                    <div class="step-timeline" id="${cardId}-steps"></div>
+                    <div class="report-box" id="${cardId}-report" style="display:none;"></div>
+                </div>
+            `;
+            chat.appendChild(assistantMsg);
+            chat.scrollTop = chat.scrollHeight;
+
+            const btnSend = document.getElementById('btnSend');
+            btnSend.disabled = true;
+
+            // 3. 呼叫後端 SSE (Server-Sent Events) 即時串流
+            try {
+                const response = await fetch('/api/investigate', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        api_key: apiKey,
+                        device_type: deviceType,
+                        host, username, password, port,
+                        prompt
+                    })
+                });
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n\n');
+                    buffer = lines.pop();
+
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            const rawJson = line.slice(6);
+                            try {
+                                const step = JSON.parse(rawJson);
+                                renderStep(cardId, step);
+                            } catch (e) {
+                                console.error('Parse event error:', e);
+                            }
+                        }
+                    }
+                    chat.scrollTop = chat.scrollHeight;
+                }
+            } catch (err) {
+                renderStep(cardId, { type: 'error', content: err.message });
+            } finally {
+                btnSend.disabled = false;
+                const sp = document.getElementById(`${cardId}-spinner`);
+                if (sp) sp.style.display = 'none';
+            }
+        }
+
+        function renderStep(cardId, step) {
+            const stepsContainer = document.getElementById(`${cardId}-steps`);
+            const reportContainer = document.getElementById(`${cardId}-report`);
+
+            if (step.type === 'tool_call') {
+                const item = document.createElement('div');
+                item.className = 'step-item';
+                item.id = `${cardId}-cmd-${step.command.replace(/\s+/g, '_')}`;
+                item.innerHTML = `
+                    <div class="step-header">
+                        <span>第 ${step.iteration} 輪：執行診斷</span>
+                        <small style="color:var(--text-muted);">${escapeHtml(step.reason)}</small>
+                    </div>
+                    <div class="step-command">➜ ${escapeHtml(step.command)}</div>
+                    <div class="step-preview" style="color:var(--text-muted);">正在從設備讀取輸出...</div>
+                `;
+                stepsContainer.appendChild(item);
+            } else if (step.type === 'tool_result') {
+                const item = document.getElementById(`${cardId}-cmd-${step.command.replace(/\s+/g, '_')}`);
+                if (item) {
+                    const preview = item.querySelector('.step-preview');
+                    if (preview) {
+                        preview.innerText = step.output_preview;
+                    }
+                }
+            } else if (step.type === 'final_report') {
+                reportContainer.style.display = 'block';
+                // 簡單 Markdown 換行呈現
+                reportContainer.innerHTML = '<h3>📋 綜合診斷與修復建議</h3>' + formatMarkdown(step.content);
+                const sp = document.getElementById(`${cardId}-spinner`);
+                if (sp) sp.style.display = 'none';
+            } else if (step.type === 'error') {
+                const item = document.createElement('div');
+                item.className = 'step-item';
+                item.style.borderColor = 'var(--accent)';
+                item.innerHTML = `<span style="color:var(--accent);">❌ ${escapeHtml(step.content)}</span>`;
+                stepsContainer.appendChild(item);
+            }
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        }
+
+        function formatMarkdown(text) {
+            if (!text) return '';
+            let html = escapeHtml(text);
+            // 標題
+            html = html.replace(/^### (.*$)/gim, '<h4 style="color:#38bdf8;margin:8px 0;">$1</h4>');
+            html = html.replace(/^## (.*$)/gim, '<h3 style="color:#38bdf8;margin:10px 0;">$1</h3>');
+            html = html.replace(/^# (.*$)/gim, '<h2 style="color:#38bdf8;margin:12px 0;">$1</h2>');
+            // 粗體
+            html = html.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
+            // 行內代碼
+            html = html.replace(/`(.*?)`/g, '<code style="background:#090d16;color:#38bdf8;padding:2px 6px;border-radius:4px;">$1</code>');
+            // 換行
+            html = html.replace(/\n/g, '<br>');
+            return html;
+        }
+    </script>
+</body>
+</html>
