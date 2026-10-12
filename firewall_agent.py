@@ -1,17 +1,19 @@
 ﻿"""
 Firewall AI Agent using Google GenAI SDK.
-Features:
-- ReAct loop with multi-turn chat function calling
-- Automatic Retry on 503 / 429 server spikes
-- Intelligent fallback to alternate models
+Supports:
+- Multi-turn follow-up chat session
+- Data masking for enterprise privacy
+- Automatic retry on 503/429
+- Draft remediation CLI generator
 """
 
 import os
 import time
-from typing import Generator, Dict, Any
+from typing import Generator, Dict, Any, Optional
 from google import genai
 from google.genai import types
 from firewall_connector import FirewallConnector
+from masking_engine import DataMaskingEngine
 
 SYSTEM_INSTRUCTION = """
 你是一位擁有 15 年以上經驗的資深網路架構與安全運維專家 (NetOps & SecOps Senior Specialist)，專精於 Palo Alto Networks (PAN-OS) 和 Fortinet (FortiOS) 防火牆。
@@ -28,40 +30,33 @@ SYSTEM_INSTRUCTION = """
      * 【問題摘要與現象】
      * 【設備實際排查過程與數據】（指出關鍵日誌行或指標）
      * 【根本原因分析 (Root Cause)】
-     * 【建議解決方案與處置步驟】（含具體 GUI 或 CLI 操作建議）
+     * 【建議解決方案與處置步驟】
+     * 【建議修復腳本 (Draft Remediation CLI)】（若適用，提供供工程師參考的具體 CLI 配置指令草稿，並註明需人工確認後執行）
 
 【安全準則】
 - 只能使用唯讀與診斷指令。不可執行任何 `set`, `config`, `delete`, `reboot`, `restart`, `commit` 等會變更設備狀態的危險指令。
 """
 
 class FirewallAgent:
-    def __init__(self, connector: FirewallConnector, api_key: str = None, model: str = "gemini-3.8-flash"):
+    def __init__(
+        self,
+        connector: FirewallConnector,
+        api_key: str = None,
+        model: str = "gemini-3.8-flash",
+        enable_masking: bool = True
+    ):
         self.connector = connector
         self.api_key = api_key or os.environ.get("GEMINI_API_KEY", "")
         self.model = model
+        self.masking_engine = DataMaskingEngine(enabled=enable_masking)
         if not self.api_key:
             raise ValueError("請提供 Gemini API Key！")
 
         self.client = genai.Client(api_key=self.api_key)
+        self.chat = None
+        self._init_chat()
 
-    def _send_message_with_retry(self, chat, message, max_retries=3):
-        """處理 503 伺服器尖峰與暫時性限流的自動重試機制"""
-        delay = 2
-        last_error = None
-        for attempt in range(max_retries):
-            try:
-                return chat.send_message(message)
-            except Exception as e:
-                err_str = str(e)
-                if "503" in err_str or "429" in err_str or "UNAVAILABLE" in err_str:
-                    last_error = e
-                    time.sleep(delay)
-                    delay *= 1.5
-                    continue
-                raise e
-        raise last_error
-
-    def run_investigation(self, prompt: str, max_iterations: int = 6) -> Generator[Dict[str, Any], None, None]:
+    def _init_chat(self):
         device_name = "Palo Alto Networks (PAN-OS)" if self.connector.device_type == "paloalto_panos" else "Fortinet (FortiOS)"
         
         tool_declaration = {
@@ -83,27 +78,10 @@ class FirewallAgent:
             }
         }
 
-        user_context_prompt = f"""
-[設備資訊]
-類型: {device_name}
-IP: {self.connector.host}
-
-[使用者問題]
-{prompt}
-
-請開始進行診斷。若需要設備資訊，請呼叫工具 execute_firewall_command。
-"""
-
-        yield {"type": "status", "content": f"開始分析問題，目標設備：{device_name} ({self.connector.host})..."}
-
-        # 嘗試模型清單
         candidate_models = [self.model, "gemini-2.0-flash", "gemini-1.5-flash"]
-        chat = None
-        current_model_used = None
-
         for m in candidate_models:
             try:
-                chat = self.client.chats.create(
+                self.chat = self.client.chats.create(
                     model=m,
                     config=types.GenerateContentConfig(
                         system_instruction=SYSTEM_INSTRUCTION,
@@ -111,25 +89,64 @@ IP: {self.connector.host}
                         temperature=0.2,
                     )
                 )
-                current_model_used = m
+                self.model = m
                 break
             except Exception:
                 continue
 
-        if not chat:
-            yield {"type": "error", "content": "無法初始化 AI 模型，請檢查 API Key 或稍後重試。"}
-            return
+    def _send_message_with_retry(self, message, max_retries=3):
+        delay = 2
+        last_error = None
+        for attempt in range(max_retries):
+            try:
+                return self.chat.send_message(message)
+            except Exception as e:
+                err_str = str(e)
+                if "503" in err_str or "429" in err_str or "UNAVAILABLE" in err_str:
+                    last_error = e
+                    time.sleep(delay)
+                    delay *= 1.5
+                    continue
+                raise e
+        raise last_error
+
+    def run_investigation(self, prompt: str, is_followup: bool = False, max_iterations: int = 6) -> Generator[Dict[str, Any], None, None]:
+        device_name = "Palo Alto Networks (PAN-OS)" if self.connector.device_type == "paloalto_panos" else "Fortinet (FortiOS)"
+
+        if not self.chat:
+            self._init_chat()
+            if not self.chat:
+                yield {"type": "error", "content": "無法初始化 AI 模型，請檢查 API Key 或網路連線。"}
+                return
+
+        # 脫敏處理：將使用者提問中的機敏 IP 轉為標籤
+        masked_prompt = self.masking_engine.mask_text(prompt)
+
+        if not is_followup:
+            user_context = f"""
+[設備資訊]
+類型: {device_name}
+IP: {self.masking_engine.mask_text(self.connector.host)}
+
+[排查問題]
+{masked_prompt}
+
+請開始診斷。若需要設備即時狀態，請呼叫 execute_firewall_command。
+"""
+            current_message = user_context
+            yield {"type": "status", "content": f"開始分析問題，目標設備：{device_name} ({self.connector.host})..."}
+        else:
+            current_message = f"[後續追問] {masked_prompt}"
+            yield {"type": "status", "content": "收到後續追問，延續既有設備上下文深入分析..."}
 
         iteration = 0
-        current_message = user_context_prompt
-
         while iteration < max_iterations:
             iteration += 1
 
             try:
-                response = self._send_message_with_retry(chat, current_message)
+                response = self._send_message_with_retry(current_message)
             except Exception as e:
-                yield {"type": "error", "content": f"AI 模型暫時繁忙: {str(e)}。建議再次點擊開始排查。"}
+                yield {"type": "error", "content": f"AI 模型暫時繁忙: {str(e)}。"}
                 return
 
             candidate = response.candidates[0]
@@ -139,37 +156,45 @@ IP: {self.connector.host}
 
             if not function_calls:
                 text_parts = [part.text for part in model_content.parts if part.text]
-                final_text = "\n".join(text_parts)
-                yield {"type": "final_report", "content": final_text}
+                raw_report = "\n".join(text_parts)
+                # 反向還原：將代號還原回真實 IP 給使用者閱讀
+                final_report = self.masking_engine.unmask_text(raw_report)
+                yield {"type": "final_report", "content": final_report}
                 break
 
             tool_responses = []
             for call in function_calls:
                 fn_name = call.name
                 args = dict(call.args) if call.args else {}
-                
+
                 if fn_name == "execute_firewall_command":
-                    cmd = args.get("command", "").strip()
-                    reason = args.get("reason", "未說明原因")
+                    # AI 產生的指令可能帶有 [NET_IP_1]，執行前必須還原成真實 IP
+                    raw_cmd = args.get("command", "").strip()
+                    actual_cmd = self.masking_engine.unmask_text(raw_cmd)
+                    reason = self.masking_engine.unmask_text(args.get("reason", "未說明原因"))
 
                     yield {
                         "type": "tool_call",
-                        "command": cmd,
+                        "command": actual_cmd,
                         "reason": reason,
                         "iteration": iteration,
                     }
 
-                    output = self.connector.run_command(cmd)
+                    # 從防火牆抓取資料
+                    raw_output = self.connector.run_command(actual_cmd)
 
-                    if len(output) > 5000:
-                        clipped_output = output[:3000] + "\n\n...[日誌過長，已截斷中間部分]...\n\n" + output[-1500:]
+                    # 脫敏處理：回傳給 AI 前將設備輸出中的 IP 遮罩
+                    masked_output = self.masking_engine.mask_text(raw_output)
+
+                    if len(masked_output) > 5000:
+                        clipped_output = masked_output[:3000] + "\n\n...[日誌過長，已截斷中間部分]...\n\n" + masked_output[-1500:]
                     else:
-                        clipped_output = output
+                        clipped_output = masked_output
 
                     yield {
                         "type": "tool_result",
-                        "command": cmd,
-                        "output_preview": clipped_output[:600] + ("..." if len(clipped_output) > 600 else ""),
+                        "command": actual_cmd,
+                        "output_preview": raw_output[:600] + ("..." if len(raw_output) > 600 else ""),
                     }
 
                     tool_responses.append(

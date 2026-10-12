@@ -1,17 +1,23 @@
 ﻿"""
 FastAPI Server for Firewall NetOps AI Troubleshooter.
+Enhanced with:
+- Session management for multi-turn follow-up conversations
+- Device vault endpoints (Save / Load / Delete profiles)
+- Data privacy masking toggle
 """
 
 import os
 import json
 import asyncio
-from fastapi import FastAPI
+from typing import Optional, Dict
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from firewall_connector import FirewallConnector
 from firewall_agent import FirewallAgent
+from vault_manager import DeviceVaultManager
 
 app = FastAPI(title="Firewall NetOps AI Troubleshooter")
 
@@ -23,6 +29,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# 記憶體中的 Session Agent 管理，支援多輪對話
+active_sessions: Dict[str, FirewallAgent] = {}
+
 class ConnectionTestRequest(BaseModel):
     device_type: str
     host: str
@@ -31,6 +40,7 @@ class ConnectionTestRequest(BaseModel):
     port: int = 22
 
 class InvestigateRequest(BaseModel):
+    session_id: str
     api_key: str
     device_type: str
     host: str
@@ -38,12 +48,36 @@ class InvestigateRequest(BaseModel):
     password: str
     port: int = 22
     prompt: str
+    enable_masking: bool = True
+    is_followup: bool = False
+
+class DeviceProfile(BaseModel):
+    name: str
+    device_type: str
+    host: str
+    username: str
+    password: Optional[str] = ""
+    port: int = 22
 
 @app.get("/", response_class=HTMLResponse)
 async def serve_ui():
     html_file = os.path.join(os.path.dirname(__file__), "index.html")
     with open(html_file, "r", encoding="utf-8") as f:
         return f.read()
+
+@app.get("/api/vault/devices")
+async def list_vault_devices():
+    return DeviceVaultManager.load_devices()
+
+@app.post("/api/vault/devices")
+async def save_vault_device(profile: DeviceProfile):
+    updated = DeviceVaultManager.save_device(profile.model_dump())
+    return {"success": True, "devices": updated}
+
+@app.delete("/api/vault/devices")
+async def delete_vault_device(host: str, port: int = 22):
+    updated = DeviceVaultManager.delete_device(host, port)
+    return {"success": True, "devices": updated}
 
 @app.post("/api/test-connection")
 async def test_connection(req: ConnectionTestRequest):
@@ -53,7 +87,7 @@ async def test_connection(req: ConnectionTestRequest):
         username=req.username,
         password=req.password,
         port=req.port,
-        timeout=10
+        timeout=12
     )
     try:
         loop = asyncio.get_event_loop()
@@ -65,33 +99,35 @@ async def test_connection(req: ConnectionTestRequest):
 
 @app.post("/api/investigate")
 async def investigate(req: InvestigateRequest):
-    connector = FirewallConnector(
-        device_type=req.device_type,
-        host=req.host,
-        username=req.username,
-        password=req.password,
-        port=req.port,
-        timeout=25
-    )
+    # 若為既有 session 且為追問，複用既有 agent
+    agent = active_sessions.get(req.session_id)
+
+    if not agent or not req.is_followup:
+        connector = FirewallConnector(
+            device_type=req.device_type,
+            host=req.host,
+            username=req.username,
+            password=req.password,
+            port=req.port,
+            timeout=25
+        )
+        agent = FirewallAgent(
+            connector=connector,
+            api_key=req.api_key,
+            model="gemini-3.8-flash",
+            enable_masking=req.enable_masking
+        )
+        active_sessions[req.session_id] = agent
 
     async def event_generator():
         try:
-            agent = FirewallAgent(
-                connector=connector,
-                api_key=req.api_key,
-                model="gemini-3.8-flash"
-            )
-
-            for step in agent.run_investigation(req.prompt):
+            for step in agent.run_investigation(req.prompt, is_followup=req.is_followup):
                 data = json.dumps(step, ensure_ascii=False)
                 yield f"data: {data}\n\n"
-                await asyncio.sleep(0.05)
-
+                await asyncio.sleep(0.04)
         except Exception as e:
             err_data = json.dumps({"type": "error", "content": str(e)}, ensure_ascii=False)
             yield f"data: {err_data}\n\n"
-        finally:
-            connector.close()
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
