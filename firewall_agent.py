@@ -1,8 +1,10 @@
 ﻿"""
 Firewall AI Agent using Google GenAI SDK.
-Supports:
+Features:
 - Multi-turn follow-up chat session
 - Data masking for enterprise privacy
+- One-click Security & Health Audit
+- Virtual Packet Policy Match Simulator
 - Automatic retry on 503/429
 - Draft remediation CLI generator
 """
@@ -19,19 +21,19 @@ SYSTEM_INSTRUCTION = """
 你是一位擁有 15 年以上經驗的資深網路架構與安全運維專家 (NetOps & SecOps Senior Specialist)，專精於 Palo Alto Networks (PAN-OS) 和 Fortinet (FortiOS) 防火牆。
 
 【你的職責與工作流程】
-1. 分析問題：仔細理解使用者提出的網路故障或除錯問題（例如：連線中斷、特定時間點阻擋、介面 Down、高延遲、封包掉包、VPN 斷線、CPU 高等）。
+1. 分析問題：仔細理解使用者提出的網路故障或除錯問題（例如：連線中斷、特定時間點阻擋、介面 Down、高延遲、封包掉包、VPN 斷線、CPU 高、規則安全審查等）。
 2. 自主排查：
    - 根據目標設備類型 (Palo Alto 或 Fortinet)，主動判斷需要調用哪些唯讀指令 (如 show, get, diagnose, test 等)。
-   - 調用提供的工具 `execute_firewall_command` 來抓取當前狀態、路由表、介面計數器、Session 表、ARP 表或系統日誌。
-   - 每次下指令時，保持精準且有目的性。如果一次查詢結果不足以定論，繼續調用下一條相關指令深入查驗（最多可連續排查 5 步）。
-3. 產生診斷報告：
-   - 當蒐集到足夠證據後，給出結構化、專業且易懂的繁體中文除錯報告。
-   - 報告結構需包含：
-     * 【問題摘要與現象】
-     * 【設備實際排查過程與數據】（指出關鍵日誌行或指標）
-     * 【根本原因分析 (Root Cause)】
-     * 【建議解決方案與處置步驟】
-     * 【建議修復腳本 (Draft Remediation CLI)】（若適用，提供供工程師參考的具體 CLI 配置指令草稿，並註明需人工確認後執行）
+   - 當排查「連線能否通行」或「命中哪條規則」時，主動利用模擬指令：
+     * Palo Alto: `test security-policy-match from <src_zone> to <dst_zone> source <src_ip> destination <dst_ip> protocol <proto> destination-port <port>`
+     * Fortinet: `diagnose firewall iprope lookup <src_ip> <src_port> <dst_ip> <dst_port> <protocol> <interface>`
+   - 當進行「健康與安全審查 (Audit)」時，綜合檢查 CPU、記憶體、Session 總數比、預設路由、過寬規則。
+3. 產生結構化診斷報告：
+   - 【問題摘要與現象】
+   - 【設備實際排查過程與數據】
+   - 【根本原因分析 (Root Cause)】
+   - 【建議解決方案與處置步驟】
+   - 【建議修復腳本 (Draft Remediation CLI)】（提供供工程師參考的具體變更指令草稿）
 
 【安全準則】
 - 只能使用唯讀與診斷指令。不可執行任何 `set`, `config`, `delete`, `reboot`, `restart`, `commit` 等會變更設備狀態的危險指令。
@@ -110,7 +112,7 @@ class FirewallAgent:
                 raise e
         raise last_error
 
-    def run_investigation(self, prompt: str, is_followup: bool = False, max_iterations: int = 6) -> Generator[Dict[str, Any], None, None]:
+    def run_investigation(self, prompt: str, is_followup: bool = False, max_iterations: int = 7) -> Generator[Dict[str, Any], None, None]:
         device_name = "Palo Alto Networks (PAN-OS)" if self.connector.device_type == "paloalto_panos" else "Fortinet (FortiOS)"
 
         if not self.chat:
@@ -119,7 +121,6 @@ class FirewallAgent:
                 yield {"type": "error", "content": "無法初始化 AI 模型，請檢查 API Key 或網路連線。"}
                 return
 
-        # 脫敏處理：將使用者提問中的機敏 IP 轉為標籤
         masked_prompt = self.masking_engine.mask_text(prompt)
 
         if not is_followup:
@@ -128,16 +129,16 @@ class FirewallAgent:
 類型: {device_name}
 IP: {self.masking_engine.mask_text(self.connector.host)}
 
-[排查問題]
+[任務/問題]
 {masked_prompt}
 
-請開始診斷。若需要設備即時狀態，請呼叫 execute_firewall_command。
+請開始排查。若需要設備即時狀態，請呼叫 execute_firewall_command。
 """
             current_message = user_context
-            yield {"type": "status", "content": f"開始分析問題，目標設備：{device_name} ({self.connector.host})..."}
+            yield {"type": "status", "content": f"開始分析，目標設備：{device_name} ({self.connector.host})..."}
         else:
             current_message = f"[後續追問] {masked_prompt}"
-            yield {"type": "status", "content": "收到後續追問，延續既有設備上下文深入分析..."}
+            yield {"type": "status", "content": "收到追問，延續既有上下文深入分析..."}
 
         iteration = 0
         while iteration < max_iterations:
@@ -157,7 +158,6 @@ IP: {self.masking_engine.mask_text(self.connector.host)}
             if not function_calls:
                 text_parts = [part.text for part in model_content.parts if part.text]
                 raw_report = "\n".join(text_parts)
-                # 反向還原：將代號還原回真實 IP 給使用者閱讀
                 final_report = self.masking_engine.unmask_text(raw_report)
                 yield {"type": "final_report", "content": final_report}
                 break
@@ -168,7 +168,6 @@ IP: {self.masking_engine.mask_text(self.connector.host)}
                 args = dict(call.args) if call.args else {}
 
                 if fn_name == "execute_firewall_command":
-                    # AI 產生的指令可能帶有 [NET_IP_1]，執行前必須還原成真實 IP
                     raw_cmd = args.get("command", "").strip()
                     actual_cmd = self.masking_engine.unmask_text(raw_cmd)
                     reason = self.masking_engine.unmask_text(args.get("reason", "未說明原因"))
@@ -180,10 +179,7 @@ IP: {self.masking_engine.mask_text(self.connector.host)}
                         "iteration": iteration,
                     }
 
-                    # 從防火牆抓取資料
                     raw_output = self.connector.run_command(actual_cmd)
-
-                    # 脫敏處理：回傳給 AI 前將設備輸出中的 IP 遮罩
                     masked_output = self.masking_engine.mask_text(raw_output)
 
                     if len(masked_output) > 5000:

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Firewall NetOps AI - 萬用防火牆排錯助理 (Pro)</title>
+    <title>Firewall NetOps AI - 萬用防火牆排錯與安全審計助理 (Enterprise)</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
         :root {
@@ -113,6 +113,8 @@
         .btn:hover { background-color: var(--primary-hover); }
         .btn-sm { padding: 6px 10px; font-size: 0.8rem; background-color: var(--border); color: #fff; }
         .btn-sm:hover { background-color: #334155; }
+        .btn-accent { background: linear-gradient(135deg, #f43f5e, #e11d48); color: #fff; }
+        .btn-accent:hover { opacity: 0.9; }
 
         .status-badge {
             display: flex;
@@ -149,17 +151,31 @@
         }
 
         .chat-header {
-            padding: 14px 24px;
+            padding: 12px 24px;
             border-bottom: 1px solid var(--border);
-            background-color: rgba(21, 31, 50, 0.6);
+            background-color: rgba(21, 31, 50, 0.7);
             display: flex;
             justify-content: space-between;
             align-items: center;
         }
 
-        .header-actions {
+        .header-actions { display: flex; gap: 8px; }
+
+        /* Quick Simulator Toolbar */
+        .simulator-bar {
+            background-color: var(--bg-card);
+            border-bottom: 1px solid var(--border);
+            padding: 10px 24px;
             display: flex;
-            gap: 8px;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .sim-input {
+            width: 130px;
+            padding: 6px 8px;
+            font-size: 0.8rem;
+            border-radius: 4px;
         }
 
         .chat-container {
@@ -247,7 +263,7 @@
 
         /* Input Bar */
         .input-bar-container {
-            padding: 14px 24px;
+            padding: 12px 24px;
             background-color: var(--bg-card);
             border-top: 1px solid var(--border);
         }
@@ -297,9 +313,8 @@
         }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
-        /* Print Style */
         @media print {
-            .sidebar, .input-bar-container, .chat-header { display: none !important; }
+            .sidebar, .input-bar-container, .chat-header, .simulator-bar { display: none !important; }
             body, .main-content, .chat-container { height: auto !important; overflow: visible !important; background: #fff !important; color: #000 !important; }
             .investigation-card { box-shadow: none !important; border: 1px solid #ccc !important; }
             .report-box { background: #fff !important; color: #000 !important; border: 1px solid #ccc !important; }
@@ -314,7 +329,7 @@
             <div class="brand-icon">🛡️</div>
             <div>
                 <div class="brand-title">Firewall NetOps AI</div>
-                <div class="brand-subtitle">企業級多輪排錯與資安遮罩版</div>
+                <div class="brand-subtitle">排錯、封包模擬與安全審計一體化</div>
             </div>
         </div>
 
@@ -368,7 +383,6 @@
             <input type="password" id="password" placeholder="••••••••">
         </div>
 
-        <!-- 資安開關 -->
         <label class="toggle-label">
             <span>🔒 本地機敏 IP 資料脫敏遮罩</span>
             <input type="checkbox" id="maskingToggle" checked>
@@ -378,13 +392,17 @@
             🔌 測試設備 SSH 連線
         </button>
 
+        <button class="btn btn-accent btn-sm" onclick="triggerHealthAudit()">
+            🛡️ 一鍵全設備安全與健康審計
+        </button>
+
         <div class="status-badge" id="statusBadge">
             <div class="status-dot" id="statusDot"></div>
             <span id="statusText">尚未連線</span>
         </div>
 
         <div style="font-size: 0.72rem; color: #64748b; line-height: 1.4; margin-top: auto;">
-            🛡️ <b>唯讀安全防護機制啟用中</b>：白名單僅允許唯讀診斷，嚴格攔截更動指令。機敏 IP 送出前經本地 Regex 脫敏。
+            🛡️ <b>唯讀安全防護啟用</b>：白名單限制僅能執行唯讀診斷與模擬測試指令，絕不變更生產配置。
         </div>
     </div>
 
@@ -402,11 +420,26 @@
             </div>
         </div>
 
+        <!-- 封包模擬快捷工具列 (Packet Match Simulator) -->
+        <div class="simulator-bar">
+            <span style="font-size: 0.8rem; font-weight: 600; color: var(--primary);">🎯 虛擬封包命中模擬器：</span>
+            <input type="text" id="simSrc" class="sim-input" placeholder="來源 IP (例如 192.168.1.10)">
+            <input type="text" id="simDst" class="sim-input" placeholder="目的 IP (例如 8.8.8.8)">
+            <input type="number" id="simPort" class="sim-input" style="width: 80px;" placeholder="Port (443)">
+            <select id="simProto" class="sim-input" style="width: 80px;">
+                <option value="6">TCP (6)</option>
+                <option value="17">UDP (17)</option>
+                <option value="1">ICMP (1)</option>
+            </select>
+            <button class="btn btn-sm" onclick="runPacketSimulation()">⚡ 立即模擬命中規則</button>
+        </div>
+
         <div class="chat-container" id="chatContainer">
             <div class="message assistant">
                 <div class="investigation-card">
                     <p style="color: var(--text-muted); font-size: 0.88rem;">
-                        👋 您好！已升級為 <b>企業級多輪對話排錯引擎</b>。支援診斷後直接追問、機敏 IP 自動脫敏以及一鍵匯出報告。
+                        👋 您好！已全面整合業界熱門開源工具（如 <b>Palo Alto Analyzer</b> 與 <b>Packet Flow Simulator</b>）。<br>
+                        您可以使用上方的「虛擬封包模擬器」進行即時 Policy Match，或使用左側「一鍵全設備安全審計」掃描瓶頸！
                     </p>
                 </div>
             </div>
@@ -556,6 +589,28 @@
             }
         }
 
+        function triggerHealthAudit() {
+            fillPrompt('請對目前防火牆執行「全面安全與系統健康審查 (Health & Security Audit)」。包含檢查 CPU、記憶體負載、Session 佔用比、預設路由健康度與是否有過度放行的 Any 安全規則。');
+            submitInvestigation();
+        }
+
+        function runPacketSimulation() {
+            const src = document.getElementById('simSrc').value.trim();
+            const dst = document.getElementById('simDst').value.trim();
+            const port = document.getElementById('simPort').value.trim() || '443';
+            const proto = document.getElementById('simProto').value;
+            const protoName = proto === '6' ? 'TCP' : (proto === '17' ? 'UDP' : 'ICMP');
+
+            if (!src || !dst) {
+                alert('請先在上方工具列輸入「來源 IP」與「目的 IP」！');
+                return;
+            }
+
+            const promptText = `請執行虛擬封包模擬 (Policy Match Simulation)：從來源 IP ${src} 到目的 IP ${dst}，協定 ${protoName} (${proto})，目標 Port ${port}。請調用設備的模擬工具（例如 PA 的 test security-policy-match 或 FG 的 diagnose firewall iprope lookup），確認該封包會命中哪一條規則、是否放行、以及對應出口路由。`;
+            fillPrompt(promptText);
+            submitInvestigation();
+        }
+
         async function submitInvestigation() {
             const prompt = document.getElementById('promptInput').value.trim();
             if (!prompt) return;
@@ -574,13 +629,11 @@
             document.getElementById('promptInput').value = '';
             const chat = document.getElementById('chatContainer');
 
-            // 使用者氣泡
             const userMsg = document.createElement('div');
             userMsg.className = 'message user';
             userMsg.innerHTML = `<div class="bubble">${escapeHtml(prompt)}</div>`;
             chat.appendChild(userMsg);
 
-            // AI 卡片
             const assistantMsg = document.createElement('div');
             assistantMsg.className = 'message assistant';
             const cardId = 'card-' + Date.now();
@@ -662,7 +715,7 @@
                 item.id = `${cardId}-cmd-${step.command.replace(/[\s\.\-\/]/g, '_')}`;
                 item.innerHTML = `
                     <div class="step-header">
-                        <span>第 ${step.iteration} 輪：執行診斷</span>
+                        <span>第 ${step.iteration} 輪：執行診斷/模擬</span>
                         <small style="color:var(--text-muted);">${escapeHtml(step.reason)}</small>
                     </div>
                     <div class="step-command">➜ ${escapeHtml(step.command)}</div>
