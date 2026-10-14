@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Firewall NetOps AI - 萬用防火牆排錯與安全審計助理 (Enterprise)</title>
+    <title>Firewall NetOps AI - 萬用防火牆排錯與安全審計助理 (Conversational Pro)</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
         :root {
@@ -33,49 +33,40 @@
 
         /* Sidebar */
         .sidebar {
-            width: 380px;
+            width: 360px;
             background-color: var(--bg-card);
             border-right: 1px solid var(--border);
             display: flex;
             flex-direction: column;
-            padding: 20px;
-            gap: 14px;
+            padding: 18px;
+            gap: 12px;
             overflow-y: auto;
         }
 
-        .brand {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
+        .brand { display: flex; align-items: center; gap: 10px; }
         .brand-icon {
-            font-size: 26px;
+            font-size: 24px;
             background: linear-gradient(135deg, #0284c7, #6366f1);
             border-radius: 8px;
             padding: 6px;
             display: inline-flex;
         }
-        .brand-title { font-size: 1.1rem; font-weight: 700; color: #fff; }
+        .brand-title { font-size: 1.05rem; font-weight: 700; color: #fff; }
         .brand-subtitle { font-size: 0.72rem; color: var(--text-muted); }
 
         .vault-box {
             background-color: var(--bg-card-sub);
             border: 1px solid var(--border);
             border-radius: 8px;
-            padding: 10px 12px;
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-        }
-
-        .form-group {
+            padding: 8px 12px;
             display: flex;
             flex-direction: column;
             gap: 5px;
         }
 
+        .form-group { display: flex; flex-direction: column; gap: 4px; }
         label {
-            font-size: 0.78rem;
+            font-size: 0.76rem;
             font-weight: 600;
             color: var(--text-muted);
             text-transform: uppercase;
@@ -86,9 +77,9 @@
             background-color: var(--bg-main);
             border: 1px solid var(--border);
             color: var(--text-main);
-            padding: 8px 12px;
+            padding: 7px 10px;
             border-radius: 6px;
-            font-size: 0.88rem;
+            font-size: 0.85rem;
             outline: none;
             transition: border-color 0.2s;
             font-family: inherit;
@@ -99,11 +90,11 @@
             background-color: var(--primary);
             color: #04101e;
             font-weight: 600;
-            padding: 10px 14px;
+            padding: 9px 12px;
             border-radius: 6px;
             border: none;
             cursor: pointer;
-            font-size: 0.9rem;
+            font-size: 0.88rem;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -111,16 +102,15 @@
             transition: all 0.2s;
         }
         .btn:hover { background-color: var(--primary-hover); }
-        .btn-sm { padding: 6px 10px; font-size: 0.8rem; background-color: var(--border); color: #fff; }
+        .btn-sm { padding: 5px 9px; font-size: 0.78rem; background-color: var(--border); color: #fff; }
         .btn-sm:hover { background-color: #334155; }
         .btn-accent { background: linear-gradient(135deg, #f43f5e, #e11d48); color: #fff; }
-        .btn-accent:hover { opacity: 0.9; }
 
         .status-badge {
             display: flex;
             align-items: center;
             gap: 8px;
-            font-size: 0.82rem;
+            font-size: 0.8rem;
             padding: 6px 10px;
             border-radius: 6px;
             background-color: var(--bg-main);
@@ -135,7 +125,7 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
-            font-size: 0.82rem;
+            font-size: 0.8rem;
             color: #cbd5e1;
             cursor: pointer;
             padding: 4px 0;
@@ -151,7 +141,7 @@
         }
 
         .chat-header {
-            padding: 12px 24px;
+            padding: 10px 20px;
             border-bottom: 1px solid var(--border);
             background-color: rgba(21, 31, 50, 0.7);
             display: flex;
@@ -161,33 +151,16 @@
 
         .header-actions { display: flex; gap: 8px; }
 
-        /* Quick Simulator Toolbar */
-        .simulator-bar {
-            background-color: var(--bg-card);
-            border-bottom: 1px solid var(--border);
-            padding: 10px 24px;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            flex-wrap: wrap;
-        }
-        .sim-input {
-            width: 130px;
-            padding: 6px 8px;
-            font-size: 0.8rem;
-            border-radius: 4px;
-        }
-
         .chat-container {
             flex: 1;
-            padding: 20px 24px;
+            padding: 18px 22px;
             overflow-y: auto;
             display: flex;
             flex-direction: column;
             gap: 16px;
         }
 
-        .message { display: flex; flex-direction: column; gap: 6px; max-width: 90%; }
+        .message { display: flex; flex-direction: column; gap: 6px; max-width: 92%; }
         .message.user { align-self: flex-end; }
         .message.user .bubble {
             background-color: #0284c7;
@@ -197,7 +170,7 @@
             font-size: 0.92rem;
             line-height: 1.5;
         }
-        .message.assistant { align-self: flex-start; width: 100%; max-width: 96%; }
+        .message.assistant { align-self: flex-start; width: 100%; max-width: 98%; }
 
         .investigation-card {
             background-color: var(--bg-card);
@@ -210,60 +183,89 @@
             box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
         }
 
+        /* 摺疊式排錯歷程 (Collapsible Steps) */
+        details.step-accordion {
+            background-color: var(--bg-main);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        details.step-accordion summary {
+            padding: 8px 12px;
+            font-size: 0.82rem;
+            color: var(--text-muted);
+            cursor: pointer;
+            user-select: none;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        details.step-accordion summary:hover { color: var(--primary); }
+
         .step-timeline {
             display: flex;
             flex-direction: column;
             gap: 8px;
-            padding-left: 10px;
-            border-left: 2px solid var(--border);
-            margin-left: 4px;
+            padding: 10px;
+            border-top: 1px solid var(--border);
         }
 
         .step-item {
             display: flex;
             flex-direction: column;
-            gap: 5px;
-            background-color: var(--bg-main);
+            gap: 4px;
+            background-color: #070a13;
             border: 1px solid var(--border);
             border-radius: 6px;
-            padding: 8px 12px;
-            font-size: 0.85rem;
+            padding: 8px 10px;
+            font-size: 0.82rem;
         }
 
         .step-header { display: flex; justify-content: space-between; color: var(--primary); font-weight: 600; }
         .step-command {
             font-family: 'JetBrains Mono', monospace;
-            background-color: var(--code-bg);
-            padding: 4px 8px;
+            background-color: #000;
+            padding: 3px 6px;
             border-radius: 4px;
             color: #38bdf8;
-            font-size: 0.8rem;
+            font-size: 0.78rem;
         }
         .step-preview {
             font-family: 'JetBrains Mono', monospace;
-            background-color: var(--code-bg);
+            background-color: #000;
             padding: 6px 8px;
             border-radius: 4px;
-            font-size: 0.76rem;
+            font-size: 0.75rem;
             color: #94a3b8;
-            max-height: 120px;
+            max-height: 110px;
             overflow-y: auto;
             white-space: pre-wrap;
         }
 
+        /* 人性化報告對話框 */
         .report-box {
-            background: linear-gradient(180deg, #151f32 0%, #0d1524 100%);
-            border: 1px solid #38bdf844;
-            border-radius: 8px;
-            padding: 16px 18px;
-            line-height: 1.6;
-            font-size: 0.92rem;
+            background: linear-gradient(180deg, #18263e 0%, #0d1727 100%);
+            border: 1px solid #38bdf866;
+            border-radius: 10px;
+            padding: 16px 20px;
+            line-height: 1.7;
+            font-size: 0.94rem;
+            box-shadow: 0 4px 20px rgba(56, 189, 248, 0.08);
         }
-        .report-box h3 { color: var(--primary); margin-bottom: 8px; font-size: 1.05rem; }
+        .report-box h3 {
+            color: var(--primary);
+            margin-bottom: 10px;
+            font-size: 1.1rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .report-box ul, .report-box ol { padding-left: 20px; margin: 6px 0; }
+        .report-box li { margin: 4px 0; }
 
         /* Input Bar */
         .input-bar-container {
-            padding: 12px 24px;
+            padding: 12px 20px;
             background-color: var(--bg-card);
             border-top: 1px solid var(--border);
         }
@@ -314,7 +316,7 @@
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
         @media print {
-            .sidebar, .input-bar-container, .chat-header, .simulator-bar { display: none !important; }
+            .sidebar, .input-bar-container, .chat-header { display: none !important; }
             body, .main-content, .chat-container { height: auto !important; overflow: visible !important; background: #fff !important; color: #000 !important; }
             .investigation-card { box-shadow: none !important; border: 1px solid #ccc !important; }
             .report-box { background: #fff !important; color: #000 !important; border: 1px solid #ccc !important; }
@@ -329,11 +331,10 @@
             <div class="brand-icon">🛡️</div>
             <div>
                 <div class="brand-title">Firewall NetOps AI</div>
-                <div class="brand-subtitle">排錯、封包模擬與安全審計一體化</div>
+                <div class="brand-subtitle">資深網路工程師排錯對話助理</div>
             </div>
         </div>
 
-        <!-- 常用設備庫 -->
         <div class="vault-box">
             <div style="display:flex; justify-content:space-between; align-items:center;">
                 <label>📚 快速載入設備</label>
@@ -350,8 +351,8 @@
         </div>
 
         <div class="form-group">
-            <label>設備自訂名稱</label>
-            <input type="text" id="devName" placeholder="例如: 總部 PA-220">
+            <label>設備名稱</label>
+            <input type="text" id="devName" placeholder="例如: LAB PA">
         </div>
 
         <div class="form-group">
@@ -363,11 +364,11 @@
         </div>
 
         <div class="form-group">
-            <label>防火牆 IP 位址</label>
+            <label>防火牆 IP</label>
             <input type="text" id="host" placeholder="例如: 192.168.100.254">
         </div>
 
-        <div style="display: flex; gap: 8px;">
+        <div style="display: flex; gap: 6px;">
             <div class="form-group" style="flex: 2;">
                 <label>帳號 (Username)</label>
                 <input type="text" id="username" placeholder="admin">
@@ -384,7 +385,7 @@
         </div>
 
         <label class="toggle-label">
-            <span>🔒 本地機敏 IP 資料脫敏遮罩</span>
+            <span>🔒 本地機敏 IP 資料脫敏</span>
             <input type="checkbox" id="maskingToggle" checked>
         </label>
 
@@ -400,17 +401,13 @@
             <div class="status-dot" id="statusDot"></div>
             <span id="statusText">尚未連線</span>
         </div>
-
-        <div style="font-size: 0.72rem; color: #64748b; line-height: 1.4; margin-top: auto;">
-            🛡️ <b>唯讀安全防護啟用</b>：白名單限制僅能執行唯讀診斷與模擬測試指令，絕不變更生產配置。
-        </div>
     </div>
 
     <!-- Main Workspace -->
     <div class="main-content">
         <div class="chat-header">
             <div>
-                <b style="font-size: 0.95rem;">智慧維運對話畫布</b>
+                <b style="font-size: 0.95rem;">智能維運排錯對話</b>
                 <span id="sessionTag" style="font-size: 0.75rem; color: var(--text-muted); margin-left: 8px;">Session: 新建對話</span>
             </div>
             <div class="header-actions">
@@ -420,26 +417,12 @@
             </div>
         </div>
 
-        <!-- 封包模擬快捷工具列 (Packet Match Simulator) -->
-        <div class="simulator-bar">
-            <span style="font-size: 0.8rem; font-weight: 600; color: var(--primary);">🎯 虛擬封包命中模擬器：</span>
-            <input type="text" id="simSrc" class="sim-input" placeholder="來源 IP (例如 192.168.1.10)">
-            <input type="text" id="simDst" class="sim-input" placeholder="目的 IP (例如 8.8.8.8)">
-            <input type="number" id="simPort" class="sim-input" style="width: 80px;" placeholder="Port (443)">
-            <select id="simProto" class="sim-input" style="width: 80px;">
-                <option value="6">TCP (6)</option>
-                <option value="17">UDP (17)</option>
-                <option value="1">ICMP (1)</option>
-            </select>
-            <button class="btn btn-sm" onclick="runPacketSimulation()">⚡ 立即模擬命中規則</button>
-        </div>
-
         <div class="chat-container" id="chatContainer">
             <div class="message assistant">
                 <div class="investigation-card">
-                    <p style="color: var(--text-muted); font-size: 0.88rem;">
-                        👋 您好！已全面整合業界熱門開源工具（如 <b>Palo Alto Analyzer</b> 與 <b>Packet Flow Simulator</b>）。<br>
-                        您可以使用上方的「虛擬封包模擬器」進行即時 Policy Match，或使用左側「一鍵全設備安全審計」掃描瓶頸！
+                    <p style="color: #cbd5e1; font-size: 0.9rem; line-height: 1.6;">
+                        👋 您好！我是您的 <b>資深防火牆 NetOps 顧問</b>。<br>
+                        不管是問 <b>「為什麼連不上？」</b> 還是 <b>「VPN 狀態正常嗎？」</b>，我會像真正的工程師一樣連入設備排查，並<b>直接告訴您問題結論與解決辦法</b>！
                     </p>
                 </div>
             </div>
@@ -449,16 +432,16 @@
         <div class="input-bar-container">
             <div class="quick-tags">
                 <span style="font-size: 0.75rem; color: var(--text-muted); align-self: center;">快捷範例：</span>
-                <button class="tag-btn" onclick="fillPrompt('為什麼 ethernet1/1 在 14:00 會 down？請檢查實體層、光衰與系統事件日誌。')">🔌 介面為何 Down？</button>
-                <button class="tag-btn" onclick="fillPrompt('為什麼 192.168.1.1 連不到 192.168.2.2？請檢查安全性規則、Traffic Log 與路由。')">🚫 連線被阻擋排查</button>
-                <button class="tag-btn" onclick="fillPrompt('檢查當前防火牆系統健康狀態、CPU 使用率與前五大 Session。')">📊 系統負載與 Session</button>
-                <button class="tag-btn" onclick="fillPrompt('請針對前述發現的問題，產生建議修復的 CLI 配置腳本 (Draft)。')">🛠️ 產生建議修復 CLI</button>
+                <button class="tag-btn" onclick="fillPrompt('為什麼 192.168.100.100 連不到 192.168.150.254？請直接告訴我結果與原因。')">🚫 為何連不到？</button>
+                <button class="tag-btn" onclick="fillPrompt('目前 IPsec VPN 隧道狀態如何？Phase 1 與 Phase 2 有起來嗎？')">🔒 VPN 狀態排查</button>
+                <button class="tag-btn" onclick="fillPrompt('為什麼介面在 14:00 會 down？請檢查實體層、光衰與事件日誌。')">🔌 介面為何 Down？</button>
+                <button class="tag-btn" onclick="fillPrompt('請針對前述發現的問題，產生建議修復的 CLI 配置腳本。')">🛠️ 產生修復建議 CLI</button>
             </div>
 
             <div class="input-bar">
                 <textarea id="promptInput" rows="2" placeholder="輸入排錯問題或直接追問... (Enter 送出, Shift+Enter 換行)" onkeydown="handleKeyDown(event)"></textarea>
                 <button class="btn" id="btnSend" onclick="submitInvestigation()">
-                    <span>🚀 送出排查</span>
+                    <span>💬 送出對話</span>
                 </button>
             </div>
         </div>
@@ -590,24 +573,7 @@
         }
 
         function triggerHealthAudit() {
-            fillPrompt('請對目前防火牆執行「全面安全與系統健康審查 (Health & Security Audit)」。包含檢查 CPU、記憶體負載、Session 佔用比、預設路由健康度與是否有過度放行的 Any 安全規則。');
-            submitInvestigation();
-        }
-
-        function runPacketSimulation() {
-            const src = document.getElementById('simSrc').value.trim();
-            const dst = document.getElementById('simDst').value.trim();
-            const port = document.getElementById('simPort').value.trim() || '443';
-            const proto = document.getElementById('simProto').value;
-            const protoName = proto === '6' ? 'TCP' : (proto === '17' ? 'UDP' : 'ICMP');
-
-            if (!src || !dst) {
-                alert('請先在上方工具列輸入「來源 IP」與「目的 IP」！');
-                return;
-            }
-
-            const promptText = `請執行虛擬封包模擬 (Policy Match Simulation)：從來源 IP ${src} 到目的 IP ${dst}，協定 ${protoName} (${proto})，目標 Port ${port}。請調用設備的模擬工具（例如 PA 的 test security-policy-match 或 FG 的 diagnose firewall iprope lookup），確認該封包會命中哪一條規則、是否放行、以及對應出口路由。`;
-            fillPrompt(promptText);
+            fillPrompt('請對目前防火牆執行「全設備安全與系統健康審計」。檢查 CPU 與記憶體狀態、Session 表健康度、路由健康狀況與是否有過度放行的 Any 規則，並給予繁體中文總結與評估。');
             submitInvestigation();
         }
 
@@ -629,21 +595,30 @@
             document.getElementById('promptInput').value = '';
             const chat = document.getElementById('chatContainer');
 
+            // 1. 使用者氣泡
             const userMsg = document.createElement('div');
             userMsg.className = 'message user';
             userMsg.innerHTML = `<div class="bubble">${escapeHtml(prompt)}</div>`;
             chat.appendChild(userMsg);
 
+            // 2. AI 診斷卡片
             const assistantMsg = document.createElement('div');
             assistantMsg.className = 'message assistant';
             const cardId = 'card-' + Date.now();
             assistantMsg.innerHTML = `
                 <div class="investigation-card" id="${cardId}">
                     <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <b>🛡️ AI NetOps 自主診斷中...</b>
+                        <b>🛡️ AI 顧問正在分析設備狀態...</b>
                         <span class="spinner" id="${cardId}-spinner"></span>
                     </div>
-                    <div class="step-timeline" id="${cardId}-steps"></div>
+
+                    <!-- 摺疊式後台排錯歷程 -->
+                    <details class="step-accordion" id="${cardId}-details" open>
+                        <summary>🔍 查看 AI 調查過程與下達指令 (<span id="${cardId}-count">0</span> 次互動)</summary>
+                        <div class="step-timeline" id="${cardId}-steps"></div>
+                    </details>
+
+                    <!-- 主要對話報告框 -->
                     <div class="report-box" id="${cardId}-report" style="display:none;"></div>
                 </div>
             `;
@@ -705,21 +680,28 @@
             }
         }
 
+        let stepCounts = {};
+
         function renderStep(cardId, step) {
             const stepsContainer = document.getElementById(`${cardId}-steps`);
             const reportContainer = document.getElementById(`${cardId}-report`);
+            const countSpan = document.getElementById(`${cardId}-count`);
+            const detailsElem = document.getElementById(`${cardId}-details`);
 
             if (step.type === 'tool_call') {
+                stepCounts[cardId] = (stepCounts[cardId] || 0) + 1;
+                if (countSpan) countSpan.innerText = stepCounts[cardId];
+
                 const item = document.createElement('div');
                 item.className = 'step-item';
                 item.id = `${cardId}-cmd-${step.command.replace(/[\s\.\-\/]/g, '_')}`;
                 item.innerHTML = `
                     <div class="step-header">
-                        <span>第 ${step.iteration} 輪：執行診斷/模擬</span>
+                        <span>第 ${step.iteration} 輪：下達檢查指令</span>
                         <small style="color:var(--text-muted);">${escapeHtml(step.reason)}</small>
                     </div>
                     <div class="step-command">➜ ${escapeHtml(step.command)}</div>
-                    <div class="step-preview" style="color:var(--text-muted);">正在從設備讀取輸出...</div>
+                    <div class="step-preview" style="color:var(--text-muted);">正在讀取設備輸出...</div>
                 `;
                 stepsContainer.appendChild(item);
             } else if (step.type === 'tool_result') {
@@ -729,9 +711,13 @@
                     if (preview) preview.innerText = step.output_preview;
                 }
             } else if (step.type === 'final_report') {
+                // 自動將生硬的指令摺疊收起，把舞台留給 AI 的診斷對話
+                if (detailsElem) detailsElem.removeAttribute('open');
+
                 reportContainer.style.display = 'block';
-                reportContainer.innerHTML = '<h3>📋 診斷報告與建議處置</h3>' + formatMarkdown(step.content);
+                reportContainer.innerHTML = '<h3>💡 顧問診斷與故障分析報告</h3>' + formatMarkdown(step.content);
                 lastReportContent = step.content;
+
                 const sp = document.getElementById(`${cardId}-spinner`);
                 if (sp) sp.style.display = 'none';
             } else if (step.type === 'error') {
@@ -763,7 +749,7 @@
             html = html.replace(/^## (.*$)/gim, '<h3 style="color:#38bdf8;margin:10px 0;">$1</h3>');
             html = html.replace(/^# (.*$)/gim, '<h2 style="color:#38bdf8;margin:12px 0;">$1</h2>');
             html = html.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
-            html = html.replace(/`(.*?)`/g, '<code style="background:#070a13;color:#38bdf8;padding:2px 6px;border-radius:4px;">$1</code>');
+            html = html.replace(/`(.*?)`/g, '<code style="background:#000;color:#38bdf8;padding:2px 6px;border-radius:4px;">$1</code>');
             html = html.replace(/\n/g, '<br>');
             return html;
         }

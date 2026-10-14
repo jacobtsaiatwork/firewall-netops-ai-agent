@@ -1,12 +1,9 @@
 ﻿"""
 Firewall AI Agent using Google GenAI SDK.
 Features:
-- Multi-turn follow-up chat session
-- Data masking for enterprise privacy
-- One-click Security & Health Audit
-- Virtual Packet Policy Match Simulator
-- Automatic retry on 503/429
-- Draft remediation CLI generator
+- Guaranteed conversational responses (No raw CLI dumps without explanation)
+- Forced final synthesis when investigation limit is reached
+- Explains findings like a human NetOps Senior Consultant
 """
 
 import os
@@ -18,25 +15,20 @@ from firewall_connector import FirewallConnector
 from masking_engine import DataMaskingEngine
 
 SYSTEM_INSTRUCTION = """
-你是一位擁有 15 年以上經驗的資深網路架構與安全運維專家 (NetOps & SecOps Senior Specialist)，專精於 Palo Alto Networks (PAN-OS) 和 Fortinet (FortiOS) 防火牆。
+你是一位資深的網路安全與防火牆維運顧問 (Senior NetOps & SecOps Consultant)。
+你的目標是：【用自然語言與工程師對話，深入排錯並直接指出問題根因與具體解法】。
 
-【你的職責與工作流程】
-1. 分析問題：仔細理解使用者提出的網路故障或除錯問題（例如：連線中斷、特定時間點阻擋、介面 Down、高延遲、封包掉包、VPN 斷線、CPU 高、規則安全審查等）。
-2. 自主排查：
-   - 根據目標設備類型 (Palo Alto 或 Fortinet)，主動判斷需要調用哪些唯讀指令 (如 show, get, diagnose, test 等)。
-   - 當排查「連線能否通行」或「命中哪條規則」時，主動利用模擬指令：
-     * Palo Alto: `test security-policy-match from <src_zone> to <dst_zone> source <src_ip> destination <dst_ip> protocol <proto> destination-port <port>`
-     * Fortinet: `diagnose firewall iprope lookup <src_ip> <src_port> <dst_ip> <dst_port> <protocol> <interface>`
-   - 當進行「健康與安全審查 (Audit)」時，綜合檢查 CPU、記憶體、Session 總數比、預設路由、過寬規則。
-3. 產生結構化診斷報告：
-   - 【問題摘要與現象】
-   - 【設備實際排查過程與數據】
-   - 【根本原因分析 (Root Cause)】
-   - 【建議解決方案與處置步驟】
-   - 【建議修復腳本 (Draft Remediation CLI)】（提供供工程師參考的具體變更指令草稿）
+【對話與溝通準則 - 最重要】
+1. 切勿只當指令轉發器！設備輸出的生硬日誌（CLI raw output）只是你的除錯依據，使用者需要的是你「消化後的專業解釋與結論」。
+2. 每次回答必須給出明確的【人類大白話結論】：
+   - 為什麼連不上？（例如：被哪條 Policy 擋了？還是 VPN 隧道斷了？還是路由沒有下一跳？）
+   - 在哪一個環節出錯？
+   - 具體該去哪裡修改（GUI 路徑或 CLI 指令）？
+3. 如果使用者問「結果是什麼？」或「這是什麼意思？」，請直接針對已收集的日誌進行詳細白話解釋，不要重新盲目下指令。
 
-【安全準則】
-- 只能使用唯讀與診斷指令。不可執行任何 `set`, `config`, `delete`, `reboot`, `restart`, `commit` 等會變更設備狀態的危險指令。
+【自主排查能力】
+- 針對 Palo Alto / Fortinet，你可以調用 `execute_firewall_command` 抓取路由表、安全原則匹配、VPN SA 狀態、介面計數器或系統日誌。
+- 每次下指令時，請保持精準。最多執行 5 步調查，若足夠或已到步數上限，必須立即整理產出最終結論。
 """
 
 class FirewallAgent:
@@ -69,11 +61,11 @@ class FirewallAgent:
                 "properties": {
                     "command": {
                         "type": "STRING",
-                        "description": f"要執行的完整 CLI 指令。PA 請用 show/test/debug 開頭；Fortinet 請用 get/show/diagnose 開頭。嚴禁修改設定之指令。",
+                        "description": "要執行的完整 CLI 指令。PA 請用 show/test/debug 開頭；Fortinet 請用 get/show/diagnose 開頭。嚴禁修改設定之指令。",
                     },
                     "reason": {
                         "type": "STRING",
-                        "description": "為什麼要執行這條指令的簡短說明，讓使用者了解除錯思路。",
+                        "description": "為什麼要執行這條指令的簡短說明。",
                     }
                 },
                 "required": ["command", "reason"],
@@ -88,7 +80,7 @@ class FirewallAgent:
                     config=types.GenerateContentConfig(
                         system_instruction=SYSTEM_INSTRUCTION,
                         tools=[types.Tool(function_declarations=[types.FunctionDeclaration(**tool_declaration)])],
-                        temperature=0.2,
+                        temperature=0.3,
                     )
                 )
                 self.model = m
@@ -112,7 +104,7 @@ class FirewallAgent:
                 raise e
         raise last_error
 
-    def run_investigation(self, prompt: str, is_followup: bool = False, max_iterations: int = 7) -> Generator[Dict[str, Any], None, None]:
+    def run_investigation(self, prompt: str, is_followup: bool = False, max_iterations: int = 5) -> Generator[Dict[str, Any], None, None]:
         device_name = "Palo Alto Networks (PAN-OS)" if self.connector.device_type == "paloalto_panos" else "Fortinet (FortiOS)"
 
         if not self.chat:
@@ -123,24 +115,29 @@ class FirewallAgent:
 
         masked_prompt = self.masking_engine.mask_text(prompt)
 
+        # 判斷使用者是否只是在問總結或解釋
+        prompt_lower = prompt.lower()
+        is_asking_summary = any(k in prompt_lower for k in ["結果", "結論", "為什麼", "這代表", " summary", "結論是什麼", "結果是什麼"])
+
         if not is_followup:
             user_context = f"""
-[設備資訊]
-類型: {device_name}
-IP: {self.masking_engine.mask_text(self.connector.host)}
+[目標設備] {device_name} ({self.masking_engine.mask_text(self.connector.host)})
+[排查問題] {masked_prompt}
 
-[任務/問題]
-{masked_prompt}
-
-請開始排查。若需要設備即時狀態，請呼叫 execute_firewall_command。
+請開始排查。若需要設備即時狀態，請呼叫 execute_firewall_command。調查完成後，必須給出結構化中文診斷報告與建議。
 """
             current_message = user_context
-            yield {"type": "status", "content": f"開始分析，目標設備：{device_name} ({self.connector.host})..."}
+            yield {"type": "status", "content": f"開始分析問題，目標設備：{device_name} ({self.connector.host})..."}
         else:
-            current_message = f"[後續追問] {masked_prompt}"
-            yield {"type": "status", "content": "收到追問，延續既有上下文深入分析..."}
+            if is_asking_summary:
+                current_message = f"[使用者提問] {masked_prompt}\n請不要再下新的指令。請立即根據上一輪所有指令收集到的設備回傳輸出，用專業且親切的繁體中文，詳細向我說明診斷結論、故障根本原因與具體修復處置步驟！"
+            else:
+                current_message = f"[後續提問] {masked_prompt}"
+            yield {"type": "status", "content": "收到提問，正在為您分析並產生診斷回答..."}
 
         iteration = 0
+        has_final_report = False
+
         while iteration < max_iterations:
             iteration += 1
 
@@ -155,13 +152,16 @@ IP: {self.masking_engine.mask_text(self.connector.host)}
 
             function_calls = [part.function_call for part in model_content.parts if part.function_call]
 
-            if not function_calls:
-                text_parts = [part.text for part in model_content.parts if part.text]
+            # 如果 AI 本次回傳了文字訊息
+            text_parts = [part.text for part in model_content.parts if part.text]
+            if text_parts and not function_calls:
                 raw_report = "\n".join(text_parts)
                 final_report = self.masking_engine.unmask_text(raw_report)
                 yield {"type": "final_report", "content": final_report}
+                has_final_report = True
                 break
 
+            # 處理工具調用
             tool_responses = []
             for call in function_calls:
                 fn_name = call.name
@@ -170,7 +170,7 @@ IP: {self.masking_engine.mask_text(self.connector.host)}
                 if fn_name == "execute_firewall_command":
                     raw_cmd = args.get("command", "").strip()
                     actual_cmd = self.masking_engine.unmask_text(raw_cmd)
-                    reason = self.masking_engine.unmask_text(args.get("reason", "未說明原因"))
+                    reason = self.masking_engine.unmask_text(args.get("reason", "排查設備狀態"))
 
                     yield {
                         "type": "tool_call",
@@ -182,8 +182,8 @@ IP: {self.masking_engine.mask_text(self.connector.host)}
                     raw_output = self.connector.run_command(actual_cmd)
                     masked_output = self.masking_engine.mask_text(raw_output)
 
-                    if len(masked_output) > 5000:
-                        clipped_output = masked_output[:3000] + "\n\n...[日誌過長，已截斷中間部分]...\n\n" + masked_output[-1500:]
+                    if len(masked_output) > 4000:
+                        clipped_output = masked_output[:2500] + "\n\n...[日誌過長，截斷]...\n\n" + masked_output[-1200:]
                     else:
                         clipped_output = masked_output
 
@@ -201,3 +201,19 @@ IP: {self.masking_engine.mask_text(self.connector.host)}
                     )
 
             current_message = tool_responses
+
+        # 關鍵保險：如果達到了迭代上限，強制讓 AI 進行收尾總結，絕對不留白！
+        if not has_final_report:
+            yield {"type": "status", "content": "已完成設備狀態數據蒐集，正在綜合推論產生最終診斷報告..."}
+            force_summary_prompt = "你已經執行了足夠的診斷指令。現在請不要再調用任何工具，請立即根據剛才所收集到的所有設備輸出，給出完整、專業的繁體中文診斷結論報告，說明根本原因與修復建議。"
+            try:
+                forced_resp = self._send_message_with_retry(force_summary_prompt)
+                cand = forced_resp.candidates[0]
+                texts = [p.text for p in cand.content.parts if p.text]
+                if texts:
+                    final_report = self.masking_engine.unmask_text("\n".join(texts))
+                    yield {"type": "final_report", "content": final_report}
+                else:
+                    yield {"type": "final_report", "content": "已完成排查，請參考上方各輪次抓取之設備日誌。"}
+            except Exception as e:
+                yield {"type": "final_report", "content": f"排查完成，但在生成總結文字時發生錯誤: {str(e)}。"}

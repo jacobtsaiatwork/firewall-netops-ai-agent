@@ -1,0 +1,10 @@
+[
+  {
+    "name": "LAB PA",
+    "device_type": "paloalto_panos",
+    "host": "192.168.100.254",
+    "username": "admin",
+    "password": "1qaz@WSX",
+    "port": 22
+  }
+]
