@@ -1,9 +1,5 @@
 ﻿"""
 FastAPI Server for Firewall NetOps AI Troubleshooter.
-Enhanced with:
-- Session management for multi-turn follow-up conversations
-- Device vault endpoints (Save / Load / Delete profiles)
-- Data privacy masking toggle
 """
 
 import os
@@ -29,7 +25,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 記憶體中的 Session Agent 管理，支援多輪對話
 active_sessions: Dict[str, FirewallAgent] = {}
 
 class ConnectionTestRequest(BaseModel):
@@ -99,7 +94,6 @@ async def test_connection(req: ConnectionTestRequest):
 
 @app.post("/api/investigate")
 async def investigate(req: InvestigateRequest):
-    # 若為既有 session 且為追問，複用既有 agent
     agent = active_sessions.get(req.session_id)
 
     if not agent or not req.is_followup:
@@ -114,7 +108,7 @@ async def investigate(req: InvestigateRequest):
         agent = FirewallAgent(
             connector=connector,
             api_key=req.api_key,
-            model="gemini-3.8-flash",
+            model="gemini-1.5-flash",
             enable_masking=req.enable_masking
         )
         active_sessions[req.session_id] = agent

@@ -1,9 +1,9 @@
 ﻿"""
 Firewall AI Agent using Google GenAI SDK.
-Features:
-- Guaranteed conversational responses (No raw CLI dumps without explanation)
-- Forced final synthesis when investigation limit is reached
-- Explains findings like a human NetOps Senior Consultant
+Optimized for Free Tier Quota:
+- Primary model: gemini-1.5-flash (1500 requests/day, avoiding the 20/day limit of experimental preview models)
+- Automatic 429 quota exhaustion fallback
+- Forced final conversational synthesis
 """
 
 import os
@@ -18,7 +18,7 @@ SYSTEM_INSTRUCTION = """
 你是一位資深的網路安全與防火牆維運顧問 (Senior NetOps & SecOps Consultant)。
 你的目標是：【用自然語言與工程師對話，深入排錯並直接指出問題根因與具體解法】。
 
-【對話與溝通準則 - 最重要】
+【對話與溝通準則】
 1. 切勿只當指令轉發器！設備輸出的生硬日誌（CLI raw output）只是你的除錯依據，使用者需要的是你「消化後的專業解釋與結論」。
 2. 每次回答必須給出明確的【人類大白話結論】：
    - 為什麼連不上？（例如：被哪條 Policy 擋了？還是 VPN 隧道斷了？還是路由沒有下一跳？）
@@ -28,7 +28,7 @@ SYSTEM_INSTRUCTION = """
 
 【自主排查能力】
 - 針對 Palo Alto / Fortinet，你可以調用 `execute_firewall_command` 抓取路由表、安全原則匹配、VPN SA 狀態、介面計數器或系統日誌。
-- 每次下指令時，請保持精準。最多執行 5 步調查，若足夠或已到步數上限，必須立即整理產出最終結論。
+- 每次下指令時，請保持精準。最多執行 4~5 步調查，若足夠或已到步數上限，必須立即整理產出最終結論。
 """
 
 class FirewallAgent:
@@ -36,12 +36,13 @@ class FirewallAgent:
         self,
         connector: FirewallConnector,
         api_key: str = None,
-        model: str = "gemini-3.8-flash",
+        model: str = "gemini-1.5-flash",
         enable_masking: bool = True
     ):
         self.connector = connector
         self.api_key = api_key or os.environ.get("GEMINI_API_KEY", "")
-        self.model = model
+        # 預設使用 1.5-flash，擁有每天 1500 次的超大免費配額
+        self.model = model or "gemini-1.5-flash"
         self.masking_engine = DataMaskingEngine(enabled=enable_masking)
         if not self.api_key:
             raise ValueError("請提供 Gemini API Key！")
@@ -72,7 +73,8 @@ class FirewallAgent:
             }
         }
 
-        candidate_models = [self.model, "gemini-2.0-flash", "gemini-1.5-flash"]
+        # 優先使用高配額模型 (1.5-flash)
+        candidate_models = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro"]
         for m in candidate_models:
             try:
                 self.chat = self.client.chats.create(
@@ -96,15 +98,21 @@ class FirewallAgent:
                 return self.chat.send_message(message)
             except Exception as e:
                 err_str = str(e)
-                if "503" in err_str or "429" in err_str or "UNAVAILABLE" in err_str:
+                if "503" in err_str or "UNAVAILABLE" in err_str:
                     last_error = e
                     time.sleep(delay)
                     delay *= 1.5
                     continue
+                # 若遇到 429 且指出特定模型額度耗盡，嘗試更換為 1.5-flash 重試
+                if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
+                    if self.model != "gemini-1.5-flash":
+                        self.model = "gemini-1.5-flash"
+                        self._init_chat()
+                        return self.chat.send_message(message)
                 raise e
         raise last_error
 
-    def run_investigation(self, prompt: str, is_followup: bool = False, max_iterations: int = 5) -> Generator[Dict[str, Any], None, None]:
+    def run_investigation(self, prompt: str, is_followup: bool = False, max_iterations: int = 4) -> Generator[Dict[str, Any], None, None]:
         device_name = "Palo Alto Networks (PAN-OS)" if self.connector.device_type == "paloalto_panos" else "Fortinet (FortiOS)"
 
         if not self.chat:
@@ -115,7 +123,6 @@ class FirewallAgent:
 
         masked_prompt = self.masking_engine.mask_text(prompt)
 
-        # 判斷使用者是否只是在問總結或解釋
         prompt_lower = prompt.lower()
         is_asking_summary = any(k in prompt_lower for k in ["結果", "結論", "為什麼", "這代表", " summary", "結論是什麼", "結果是什麼"])
 
@@ -144,7 +151,7 @@ class FirewallAgent:
             try:
                 response = self._send_message_with_retry(current_message)
             except Exception as e:
-                yield {"type": "error", "content": f"AI 模型暫時繁忙: {str(e)}。"}
+                yield {"type": "error", "content": f"AI 模型呼叫錯誤: {str(e)}。"}
                 return
 
             candidate = response.candidates[0]
@@ -152,7 +159,6 @@ class FirewallAgent:
 
             function_calls = [part.function_call for part in model_content.parts if part.function_call]
 
-            # 如果 AI 本次回傳了文字訊息
             text_parts = [part.text for part in model_content.parts if part.text]
             if text_parts and not function_calls:
                 raw_report = "\n".join(text_parts)
@@ -161,7 +167,6 @@ class FirewallAgent:
                 has_final_report = True
                 break
 
-            # 處理工具調用
             tool_responses = []
             for call in function_calls:
                 fn_name = call.name
@@ -182,8 +187,8 @@ class FirewallAgent:
                     raw_output = self.connector.run_command(actual_cmd)
                     masked_output = self.masking_engine.mask_text(raw_output)
 
-                    if len(masked_output) > 4000:
-                        clipped_output = masked_output[:2500] + "\n\n...[日誌過長，截斷]...\n\n" + masked_output[-1200:]
+                    if len(masked_output) > 3500:
+                        clipped_output = masked_output[:2200] + "\n\n...[日誌過長，截斷]...\n\n" + masked_output[-1000:]
                     else:
                         clipped_output = masked_output
 
@@ -202,7 +207,6 @@ class FirewallAgent:
 
             current_message = tool_responses
 
-        # 關鍵保險：如果達到了迭代上限，強制讓 AI 進行收尾總結，絕對不留白！
         if not has_final_report:
             yield {"type": "status", "content": "已完成設備狀態數據蒐集，正在綜合推論產生最終診斷報告..."}
             force_summary_prompt = "你已經執行了足夠的診斷指令。現在請不要再調用任何工具，請立即根據剛才所收集到的所有設備輸出，給出完整、專業的繁體中文診斷結論報告，說明根本原因與修復建議。"
