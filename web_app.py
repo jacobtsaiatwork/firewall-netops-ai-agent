@@ -1,8 +1,13 @@
 ﻿"""
 FastAPI Server for Firewall NetOps AI Troubleshooter.
+Features:
+- Dynamic model selection (gemini-1.5-flash, 1.5-pro, 2.0-flash)
+- Session lifecycle & TTL cleanup (prevents memory leak & SSH lingering)
+- AES Fernet encrypted device vault
 """
 
 import os
+import time
 import json
 import asyncio
 from typing import Optional, Dict
@@ -25,7 +30,25 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-active_sessions: Dict[str, FirewallAgent] = {}
+# 帶有最後訪問時間戳記的 Session 快取
+active_sessions: Dict[str, Dict] = {}
+SESSION_TTL_SECONDS = 1800  # 30 分鐘無活動自動釋放
+
+def _cleanup_expired_sessions():
+    """定期清理超時 Session，中斷 SSH 並釋放記憶體"""
+    now = time.time()
+    expired = []
+    for sid, data in active_sessions.items():
+        if now - data.get("last_active", 0) > SESSION_TTL_SECONDS:
+            expired.append(sid)
+    for sid in expired:
+        try:
+            agent = active_sessions[sid].get("agent")
+            if agent and agent.connector:
+                agent.connector.close()
+        except Exception:
+            pass
+        active_sessions.pop(sid, None)
 
 class ConnectionTestRequest(BaseModel):
     device_type: str
@@ -33,6 +56,7 @@ class ConnectionTestRequest(BaseModel):
     username: str
     password: str
     port: int = 22
+    timeout: Optional[int] = 15
 
 class InvestigateRequest(BaseModel):
     session_id: str
@@ -43,6 +67,9 @@ class InvestigateRequest(BaseModel):
     password: str
     port: int = 22
     prompt: str
+    model: Optional[str] = "gemini-1.5-flash"
+    max_iterations: Optional[int] = 4
+    timeout: Optional[int] = 25
     enable_masking: bool = True
     is_followup: bool = False
 
@@ -74,6 +101,17 @@ async def delete_vault_device(host: str, port: int = 22):
     updated = DeviceVaultManager.delete_device(host, port)
     return {"success": True, "devices": updated}
 
+@app.post("/api/session/close")
+async def close_session(session_id: str):
+    """前端點擊新對話時主動關閉連線"""
+    data = active_sessions.pop(session_id, None)
+    if data and data.get("agent"):
+        try:
+            data["agent"].connector.close()
+        except Exception:
+            pass
+    return {"success": True}
+
 @app.post("/api/test-connection")
 async def test_connection(req: ConnectionTestRequest):
     connector = FirewallConnector(
@@ -82,7 +120,7 @@ async def test_connection(req: ConnectionTestRequest):
         username=req.username,
         password=req.password,
         port=req.port,
-        timeout=12
+        timeout=req.timeout or 15
     )
     try:
         loop = asyncio.get_event_loop()
@@ -94,28 +132,48 @@ async def test_connection(req: ConnectionTestRequest):
 
 @app.post("/api/investigate")
 async def investigate(req: InvestigateRequest):
-    agent = active_sessions.get(req.session_id)
+    _cleanup_expired_sessions()
 
+    session_data = active_sessions.get(req.session_id)
+    agent = session_data.get("agent") if session_data else None
+
+    # 如果需要新建 Agent 或更換連線參數
     if not agent or not req.is_followup:
+        # 若已有舊連線先關閉
+        if agent and agent.connector:
+            try:
+                agent.connector.close()
+            except Exception:
+                pass
+
         connector = FirewallConnector(
             device_type=req.device_type,
             host=req.host,
             username=req.username,
             password=req.password,
             port=req.port,
-            timeout=25
+            timeout=req.timeout or 25
         )
         agent = FirewallAgent(
             connector=connector,
             api_key=req.api_key,
-            model="gemini-1.5-flash",
+            model=req.model or "gemini-1.5-flash",
             enable_masking=req.enable_masking
         )
-        active_sessions[req.session_id] = agent
+        active_sessions[req.session_id] = {
+            "agent": agent,
+            "last_active": time.time()
+        }
+    else:
+        active_sessions[req.session_id]["last_active"] = time.time()
 
     async def event_generator():
         try:
-            for step in agent.run_investigation(req.prompt, is_followup=req.is_followup):
+            for step in agent.run_investigation(
+                req.prompt,
+                is_followup=req.is_followup,
+                max_iterations=req.max_iterations or 4
+            ):
                 data = json.dumps(step, ensure_ascii=False)
                 yield f"data: {data}\n\n"
                 await asyncio.sleep(0.04)
